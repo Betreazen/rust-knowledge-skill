@@ -1,0 +1,6 @@
+# Публикуется только рабочий скилл
+/*
+!/.gitignore
+!/README.md
+!/rust-knowledge/
+!/.gitattributes
