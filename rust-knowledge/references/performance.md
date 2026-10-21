@@ -83,6 +83,8 @@
 | Нужен явный SIMD на stable | `fearless_simd` (по умолчанию), `wide`, `pulp`; `std::simd` только на nightly | [SIMD 2026](https://shnatsel.github.io/state-of-simd-rust-2026/), [pythonspeed](https://pythonspeed.com/articles/simd-stable-rust/) |
 | Хочется AVX2/AVX-512, но бинарник пойдёт на чужое железо | Runtime-мультиверсионирование (`multiversion`, `#[simd]` в fearless_simd) вместо `target-cpu=native` | [SIMD 2026](https://shnatsel.github.io/state-of-simd-rust-2026/) |
 | Тип большой, кэш-промахи, `memcpy` в профиле | Боксить большие редкие варианты enum, `assert!(size_of::<T>() <= N)` в тесте, `-Zprint-type-sizes` | [Perf Book: Type Sizes](https://nnethercote.github.io/perf-book/) |
+| Миллионы мелких структур съедают память, сужение поля не уменьшило `size_of` | Выравнивание добивает структуру до кратного самому широкому полю: храните поля в `[u8; N]` с геттерами (`from_ne_bytes`) или переупорядочьте и сузьте поля; закрепите размер `const _: () = assert!(size_of::<T>() == N)` | [Cloudflare: Saving another 100TB of RAM with math](https://blog.cloudflare.com/saving-100-tb-of-ram-with-math/) |
+| Параметр «с запасом» (число реплик, хэшей, бакетов, ёмкость кэша) раздувает память или время | Выведите или измерьте кривую ошибки от параметра и найдите точку убывающей отдачи вместо «чем больше, тем лучше» | [Cloudflare: Saving another 100TB of RAM with math](https://blog.cloudflare.com/saving-100-tb-of-ram-with-math/) |
 | Цикл читает одно поле из большой структуры | Struct-of-arrays: отдельные `Vec` на горячие поля (общая практика data-oriented design) | — |
 | Граф из `Rc<RefCell<_>>`, плохая локальность, паники borrow | Индексы или хэндлы с поколениями (`u32`) в плоском `Vec` | [Handles are the better pointers](https://floooh.github.io/2018/06/17/handles-vs-pointers.html) |
 | `Box<dyn Trait>`/`&dyn` в горячем цикле | Generics (мономорфизация) или enum с `match`, если набор типов закрыт (общая практика) | [Rust for Rustaceans](https://nostarch.com/rust-rustaceans) |
@@ -140,6 +142,7 @@
 - Задавайте ёмкость заранее (`Vec::with_capacity`, `String::with_capacity`, `reserve`), если размер известен или оценивается. Переиспользуйте буферы между итерациями: `clear()` сохраняет ёмкость.
 - Возвращайте `&str`/`&[T]` или `Cow`, когда изменение нужно редко. Не клонируйте ради borrow checker в горячем пути: лучше перестроить заимствования.
 - Для маленьких коллекций подходят `SmallVec`/`ArrayVec`/`smallstr`. Для объектов с общим временем жизни (фаза, кадр, запрос) — арена `bumpalo`: выделение почти бесплатно, освобождение одним махом.
+- Сужение поля не всегда уменьшает тип: структура добивается паддингом до кратного выравниванию самого широкого поля (`u32` + `u16` = 8 байт, а не 6). Когда таких значений миллионы, храните поля в массиве байт `[u8; N]` с геттерами: выравнивание станет 1, а `#[repr(packed)]` с его запретом ссылок на поля не понадобится. Cloudflare так сократила память кольца consistent hashing на 25%.
 - Держите горячие типы маленькими. Enum весит столько же, сколько его самый большой вариант, поэтому большие редкие варианты боксите. Размеры проверяйте через `-Zprint-type-sizes` (nightly) или `assert!(std::mem::size_of::<T>() <= N)` в тесте, чтобы ловить регрессии.
 - Для графов используйте индексы (`u32`) или хэндлы с поколениями в плоском `Vec` вместо `Rc<RefCell<_>>`. Так данные лежат плотнее, сериализуются без усилий и не дают паник `BorrowMutError`.
 - Если цикл читает 1–2 поля из широкой структуры, переходите на struct-of-arrays: кэш-линии будут заполнены полезными данными.
@@ -154,6 +157,22 @@ for item in items {
     sink.consume(&buf);
 }
 
+// Упаковка без паддинга: 6 байт вместо 8 у struct { hash: u32, node: u16 }
+#[derive(Clone, Copy)]
+struct PackedPoint([u8; 6]);
+
+impl PackedPoint {
+    fn new(hash: u32, node: u16) -> Self {
+        let mut b = [0u8; 6];
+        b[..4].copy_from_slice(&hash.to_ne_bytes());
+        b[4..].copy_from_slice(&node.to_ne_bytes());
+        Self(b)
+    }
+    fn hash(self) -> u32 { u32::from_ne_bytes([self.0[0], self.0[1], self.0[2], self.0[3]]) }
+    fn node(self) -> u16 { u16::from_ne_bytes([self.0[4], self.0[5]]) }
+}
+const _: () = assert!(std::mem::size_of::<PackedPoint>() == 6);
+
 // Страховка от роста горячего типа
 #[test]
 fn hot_type_stays_small() {
@@ -165,6 +184,7 @@ fn hot_type_stays_small() {
 |---|---|---|
 | Главы «Heap Allocations» и «Type Sizes» в [Performance Book](https://nnethercote.github.io/perf-book/) | Nicholas Nethercote | `with_capacity`, `clear()`, `SmallVec`/`ArrayVec`, `Cow`, бокс больших вариантов, `-Zprint-type-sizes` |
 | [The Secret Life of Cows](https://deterministic.space/secret-life-of-cows.html) | Pascal Hertleif, 2018 | Классика про `Cow<str>`, по-прежнему точна |
+| [Cloudflare: Saving another 100TB of RAM with math](https://blog.cloudflare.com/saving-100-tb-of-ram-with-math/) | Kevin Guthrie, Mariia Iurchenko (Cloudflare), сентябрь 2026 | Паддинг структур и упаковка в `[u8; N]` (−25% памяти), математика убывающей отдачи (−90% хэшей), обратимая миграция v1/v2 бок о бок |
 | [bumpalo](https://github.com/fitzgen/bumpalo) | Nick Fitzgerald | Bump-аллокатор для фазовых аллокаций |
 | [Your own little memory strategy](https://blog.morj.men/posts/rust-arena.html) | blog.morj.men | Туториал по арене в Rust |
 | [Handles are the better pointers](https://floooh.github.io/2018/06/17/handles-vs-pointers.html) | Andre Weissflog, 2018 | Индексы с поколениями вместо указателей: локальность и защита от висячих ссылок |
@@ -377,6 +397,7 @@ out.flush()?;
 - **uv**. При запуске заявлено ускорение в 8–10 раз относительно pip без кэша и в 80–115 раз с тёплым кэшем. Разбор Несбитта показывает, что главный источник скорости — устранение работы: отказ от `.egg`, игнорирование конфигов pip, обязательные venv, статические метаданные PEP 658. Rust — необходимое, но не достаточное условие.
 - **rustc и Clippy**. PGO, BOLT и LTO ускорили сам компилятор без правок кода. В 2026 году Clippy получил 10–30% за счёт удаления пустой виртуальной диспетчеризации и включения PGO, rustdoc тоже заметно ускорился.
 - **Feldera**. Сгенерированный код разбили на тысячу крейтов, и сборка ускорилась с 30 до 2 минут за счёт параллельного codegen.
+- **Cloudflare, pingora-ketama** (сентябрь 2026). Кольцо consistent hashing занимало до ~6 ГБ на экземпляр. Два шага: упаковка точки кольца в `[u8; 6]` вместо выровненной до 8 байт структуры (−25% памяти) и сокращение числа хэшей на сервер на 90% после вывода формулы коэффициента вариации: последние 90% хэшей давали меньше 1% точности. Новое кольцо работало рядом со старым, выбор шёл по стабильному хэшу запроса, раскатка — поэтапно с мониторингом и откатом. Итог — около 100 ТБ RAM по всему парку.
 - Общий урок: самые крупные выигрыши структурные (меньше работы, другие данные, другой граф крейтов). Флаги компилятора добавляют проценты поверх.
 
 | Ресурс | Автор, год | Зачем читать |
@@ -388,6 +409,7 @@ out.flush()?;
 | [1BRC](https://barrcodes.dev/posts/1brc/) | BarrCodes | Ещё один подробный разбор |
 | [The One Billion Row Challenge in Rust](https://baarse.substack.com/p/the-one-billion-row-challenge-in-rust-1) | baarse | Серия на Substack |
 | [How uv got so fast](https://nesbitt.io/2025/12/26/how-uv-got-so-fast.html) | Andrew Nesbitt, декабрь 2025 | «Speed comes from elimination» ([обсуждение на HN](https://news.ycombinator.com/item?id=46393992)) |
+| [Cloudflare: Saving another 100TB of RAM with math](https://blog.cloudflare.com/saving-100-tb-of-ram-with-math/) | Kevin Guthrie, Mariia Iurchenko, 2026 | Память как цель оптимизации: layout, модель параметра, безопасная миграция в проде |
 | [uv: Python packaging in Rust](https://astral.sh/blog/uv) | Astral, февраль 2024 | Анонс и заявленные цифры. Есть также [доклад в Jane Street](https://www.janestreet.com/tech-talks/uv-an-extremely-fast-python-package-manager/) |
 | [Speeding up the Rust compiler without changing its code](https://kobzol.github.io/rust/rustc/2022/10/27/speeding-rustc-without-changing-its-code.html) | Kobzol, 2022 | PGO, BOLT, LTO на rustc |
 | [How to speed up the Rust compiler in September 2026](https://nnethercote.github.io/2026/09/30/how-to-speed-up-the-rust-compiler-in-september-2026.html) | Nicholas Nethercote, 2026 | Ускорения Clippy и rustdoc |
