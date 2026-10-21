@@ -210,7 +210,7 @@ profile = "minimal"
 | divan (0.1.21) | Лёгкие бенчмарки на атрибутах: generic-параметры, `AllocProfiler` | `cargo add --dev divan`, `harness = false` | `#[divan::bench(args = [...])]`; `cargo bench`; `cargo bench -- --test` (прогон без измерений в CI) | Последний релиз — апрель 2025. Учитывайте риск при долгосрочном выборе |
 | Gungraun (0.20, бывший iai-callgrind) | Однопроходные детерминированные бенчмарки на Valgrind: инструкции, кеш, аллокации | `cargo add --dev gungraun` + `cargo install gungraun-runner` той же версии + Valgrind | `#[library_benchmark]`; `cargo bench` | Linux, macOS только Intel, без Windows. iai-callgrind заморожен на 0.16.1, исходный `iai` [устарело]. Подходит для регрессионного гейта в CI |
 | hyperfine (1.21) | Бенчмарк целых команд CLI | `cargo install --locked hyperfine` или пакетный менеджер | `hyperfine --warmup 3 'old' 'new'`; `--export-markdown` | Измеряет процесс целиком, включая запуск |
-| samply (0.13) | Сэмплирующий профайлер, UI в Firefox Profiler | `cargo install --locked samply` или скрипт-установщик | `samply record ./target/profiling/app args` | Linux: нужен `perf_event_paranoid` ≤ 1 (или -1). macOS: не профилирует системные подписанные бинарники. Windows: `-a` для записи всей системы |
+| samply (0.13) | Сэмплирующий профайлер, UI в Firefox Profiler | `cargo install --locked samply` или скрипт-установщик | `samply record ./target/profiling/app args` | Linux: нужен `perf_event_paranoid` ≤ 1 (или -1). macOS: не профилирует системные подписанные бинарники. Windows: запись идёт через ETW и требует прав администратора (samply запросит UAC); `-a` для записи всей системы |
 | cargo-flamegraph (0.6.14) | Flamegraph в SVG одной командой | `cargo install flamegraph` | `cargo flamegraph --bin app -- args`; `--root`; `--dev` | Linux через perf, macOS через xctrace, Windows через blondie или DTrace. С lld (по умолчанию на x86_64 Linux с 1.90) и mold нужен `-C link-arg=-Wl,--no-rosegment`, иначе стеки неверны |
 | perf | Системный профайлер Linux | пакет дистрибутива | `perf record -g --call-graph dwarf ./app`; `perf report`; `perf stat` | Только Linux |
 | dhat-rs (0.3.3) | Профиль кучи и тесты на число и пик аллокаций | `cargo add dhat` за feature-флагом | `#[global_allocator] static A: dhat::Alloc`; `dhat::Profiler::new_heap()`; `dhat::assert!` | Автор помечает крейт как экспериментальный с низким приоритетом поддержки. Результат смотрите в DHAT viewer |
@@ -370,12 +370,22 @@ jobs:
         with: { tool: "cargo-nextest,cargo-deny,cargo-semver-checks" }
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
-      - run: cargo nextest run --workspace --all-features
+      - run: cargo nextest run --workspace --all-features --profile ci
       - run: cargo test --workspace --doc
       - run: cargo doc --workspace --no-deps --all-features
         env: { RUSTDOCFLAGS: "-D warnings" }
       - run: cargo deny check
       - run: cargo semver-checks              # только для библиотек
+```
+
+```toml
+# .config/nextest.toml — профиль ci для шага 3
+[profile.ci]
+retries = 2
+fail-fast = false
+
+[profile.ci.junit]
+path = "junit.xml"
 ```
 
 Версии actions (`@v4`, `@v2`) сверяйте с их README в момент настройки.

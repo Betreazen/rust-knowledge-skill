@@ -1,6 +1,6 @@
 ---
 name: rust-knowledge
-description: Knowledge base and workflow for writing, reviewing and optimizing Rust code in any domain — libraries, CLI tools, web backends, async services, embedded/no_std, WebAssembly, FFI, data/ML, GUI, games. Use when writing or reviewing Rust, structuring a crate or Cargo workspace, choosing crates or cargo tooling (clippy, nextest, cargo-deny, Miri, criterion, samply), benchmarking, profiling or optimizing Rust performance, working with async/concurrency/unsafe, or picking Rust books and articles. Includes a curated library of books, articles and patterns with links, a toolchain guide, and a development pipeline with benchmarks, code review and evidence-based optimization.
+description: Knowledge base and workflow for Rust in any domain — libraries, CLI tools, web backends, async services, embedded/no_std, WebAssembly, FFI and Python bindings, data/ML, GUI, games. Use for any question about Rust code, crates or tooling, even one that looks quick to answer from memory: writing or reviewing Rust; crate and Cargo workspace structure, build times; choosing crates or cargo tools (clippy, nextest, cargo-deny, Miri, criterion, samply); slow code, profiling, benchmarks, hot HashMap, allocation or clone paths; memory growth, struct size, padding, layout; async and Tokio, deadlocks and hangs, a Mutex or guard held across .await, Send/Sync errors, threads, channels, atomics, unsafe; checking whether a crate or API exists; Rust books and articles. Includes a curated library of books, articles and patterns with links, a toolchain guide, and a development pipeline with benchmarks, code review and evidence-based optimization.
 ---
 
 # Rust: библиотека знаний и пайплайн
@@ -26,7 +26,9 @@ description: Knowledge base and workflow for writing, reviewing and optimizing R
 | Особенности домена: web, CLI, библиотеки, embedded, WASM, interop, данные, GUI, игры, системный код | [references/domains.md](references/domains.md) |
 | Что почитать, маршрут обучения по уровням | [references/books.md](references/books.md) |
 
-Каждый справочник начинается с оглавления. Читайте только нужный раздел, а не файл целиком.
+Частые входы: минимальный набор инструментов и порядок CI — `toolchain.md`, разделы 10–11; память, размер структур и паддинг — `performance.md`, раздел «Память, аллокации и layout»; guard через `.await`, зависания async — `concurrency-async-unsafe.md`, разделы «Выбор блокировки» и «Ловушки async».
+
+Справочники большие, поэтому не читайте файл целиком. Найдите раздел через Grep по заголовкам (`^## `) или по ключевому слову, затем прочитайте только его через Read с `offset` и `limit`.
 
 ## Как работать
 
@@ -55,7 +57,9 @@ cargo nextest run --workspace --all-features   # или cargo test
 cargo test --doc --workspace
 ```
 
-Если в изменении есть `unsafe`, добавьте `cargo +nightly miri test`. Для публикуемой библиотеки добавьте `cargo semver-checks`. Если установлен cargo-deny, добавьте `cargo deny check`. Инструмент может быть не установлен: тогда скажите об этом и предложите команду установки из [toolchain.md](references/toolchain.md), а не пропускайте шаг молча.
+Если в изменении есть `unsafe`, добавьте `cargo +nightly miri test`. Для публикуемой библиотеки добавьте `cargo semver-checks`. Если установлен cargo-deny, добавьте `cargo deny check`; если в проекте нет `deny.toml`, запустите `cargo deny check advisories bans sources`, а настройку лицензий (`cargo deny init`) предложите владельцу.
+
+Наличие инструмента проверяйте командой (`cargo --list`, `<инструмент> --version`). Если инструмента нет, скажите об этом и предложите команду установки из [toolchain.md](references/toolchain.md), а не пропускайте шаг молча. Если проверить не удалось, так и пишите: «не удалось проверить», а не «не установлен».
 
 **При оптимизации:**
 

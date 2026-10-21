@@ -352,9 +352,9 @@ let mut counts: FxHashMap<u32, u64> = FxHashMap::default();
 | Глава «Hashing» в [Performance Book](https://nnethercote.github.io/perf-book/) | Nicholas Nethercote | Когда и на что менять SipHash |
 | [hashbrown PR #563: Change the default hasher to foldhash](https://github.com/rust-lang/hashbrown/pull/563) | Amanieu | foldhash по умолчанию в hashbrown; в `std::HashMap` по-прежнему SipHash |
 | [hashbrown на lib.rs](https://lib.rs/crates/hashbrown) | — | Текущая версия и API |
-| [foldhash summary](https://openapps.pro/packages/foldhash) | Orson Peters (автор крейта) | Варианты `fast` и `quality` |
+| [foldhash](https://github.com/orlp/foldhash) | Orson Peters (автор крейта) | Варианты `fast` и `quality` |
 | [rapidhash](https://github.com/hoxxep/rapidhash) | hoxxep | Альтернатива для строковых ключей, хэширование на этапе компиляции |
-| [Hashing algorithms for HashMap in Rust](https://blog.devgenius.io/hashing-algorithms-for-hashmap-in-rust-a-deep-dive-into-performance-and-security-3ae181798bb9?gi=0ca073f7de4a) | devgenius | Вторичное сравнение скорости и безопасности хэшеров [не проверено] |
+| [Hashing algorithms for HashMap in Rust](https://blog.devgenius.io/hashing-algorithms-for-hashmap-in-rust-a-deep-dive-into-performance-and-security-3ae181798bb9) | devgenius | Вторичное сравнение скорости и безопасности хэшеров [не проверено] |
 
 ---
 
